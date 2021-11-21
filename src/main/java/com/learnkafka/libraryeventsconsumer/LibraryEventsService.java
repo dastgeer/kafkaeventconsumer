@@ -7,6 +7,7 @@ import com.learnkafka.libraryeventsconsumer.repository.LibraryEventsRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.RecoverableDataAccessException;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
@@ -25,6 +26,9 @@ public class LibraryEventsService {
 
         LibraryEvent libraryEventPayload= objectMapper.readValue(consumerRecord.value(), LibraryEvent.class);
         log.info("libraryEventPayload: service {}",libraryEventPayload);
+        if(libraryEventPayload.getLibraryEventId()==0){
+            throw new RecoverableDataAccessException("data connection exception");
+        }
         switch (libraryEventPayload.getLibraryEventType()){
             case NEW:
                 //create new event

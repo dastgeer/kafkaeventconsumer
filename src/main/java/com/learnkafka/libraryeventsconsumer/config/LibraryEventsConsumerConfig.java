@@ -6,6 +6,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.kafka.ConcurrentKafkaListenerContainerFactoryConfigurer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.dao.RecoverableDataAccessException;
 import org.springframework.kafka.annotation.EnableKafka;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
@@ -15,6 +16,9 @@ import org.springframework.retry.RetryPolicy;
 import org.springframework.retry.backoff.FixedBackOffPolicy;
 import org.springframework.retry.policy.SimpleRetryPolicy;
 import org.springframework.retry.support.RetryTemplate;
+
+import java.util.HashMap;
+import java.util.Map;
 
 @Configuration
 @Slf4j
@@ -35,6 +39,19 @@ public class LibraryEventsConsumerConfig {
         //this will help in implement the retry operation.but retry operation only can help in connection issue or some temprory issue not with actual exception
         //if wew ill throw exception 100 time it will behave 100 times same way after 100 retry.
         factory.setRetryTemplate(simpleRetryTemplate());
+        //here to set recovery callback and pass the logic or method implemention it will have recover method and take retrycontext  which mean it will take
+        //data from retry operation when it will be go for retry.if it is recoverable then go for further retry if logic check if it is not retryable then it will go
+        //throw exception and go to kafka error handler.
+        factory.setRecoveryCallback((context)->{
+            if(context.getLastThrowable() instanceof  RecoverableDataAccessException){
+                // write recovery logic here
+                log.info("recoverable logic block in retry callback");
+            }else{
+                log.info("non recoverable logic block in retry callback");
+                throw new RuntimeException(context.getLastThrowable().getMessage());
+            }
+            return null;
+        });
         return factory;
     }
 
@@ -48,8 +65,12 @@ public class LibraryEventsConsumerConfig {
     }
 
     private RetryPolicy simpleRetryPolicy(){
-        SimpleRetryPolicy simpleRetryPolicy = new SimpleRetryPolicy();
-        simpleRetryPolicy.setMaxAttempts(3);
+        // this ma[pping is used to map or allow to retry based on true false flag with corresponding exceptiin. if want to retry with some specific excpetion
+        //then we will map with specific mapping with true otherwise false.
+        Map<Class<? extends Throwable>,Boolean> exceptionRetryMapping = new HashMap();
+        exceptionRetryMapping.put(IllegalArgumentException.class,false);
+        exceptionRetryMapping.put(RecoverableDataAccessException.class,true);
+        SimpleRetryPolicy simpleRetryPolicy = new SimpleRetryPolicy(3,exceptionRetryMapping,true);
         return simpleRetryPolicy;
     }
 }
