@@ -1,7 +1,10 @@
 package com.learnkafka.libraryeventsconsumer.config;
 
+import com.learnkafka.libraryeventsconsumer.LibraryEventsService;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.kafka.ConcurrentKafkaListenerContainerFactoryConfigurer;
 import org.springframework.context.annotation.Bean;
@@ -17,6 +20,7 @@ import org.springframework.retry.backoff.FixedBackOffPolicy;
 import org.springframework.retry.policy.SimpleRetryPolicy;
 import org.springframework.retry.support.RetryTemplate;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -24,6 +28,9 @@ import java.util.Map;
 @Slf4j
 @EnableKafka
 public class LibraryEventsConsumerConfig {
+
+    @Autowired
+    private LibraryEventsService libraryEventsService;
 
     @Bean
     ConcurrentKafkaListenerContainerFactory<?, ?> kafkaListenerContainerFactory(ConcurrentKafkaListenerContainerFactoryConfigurer configurer, ConsumerFactory<Object, Object> kafkaConsumerFactory) {
@@ -46,6 +53,11 @@ public class LibraryEventsConsumerConfig {
             if(context.getLastThrowable() instanceof  RecoverableDataAccessException){
                 // write recovery logic here
                 log.info("recoverable logic block in retry callback");
+                Arrays.asList(context.attributeNames()).forEach(attributeName -> System.out.println("printing all attributes  available in retrycontext"+attributeName));
+                ConsumerRecord<Integer,String> consumerRecord = (ConsumerRecord<Integer,String>)context.getAttribute("record");
+                //this will call by recovery logic from ConcurrentKafkaListenerContainerFactory  which is call on retry if recoverable then this record will pass to same configurable
+                //topic and get produced as prodcucer and will consume by same consumer until it consumed the record.
+                libraryEventsService.handleRecovery(consumerRecord);
             }else{
                 log.info("non recoverable logic block in retry callback");
                 throw new RuntimeException(context.getLastThrowable().getMessage());
